@@ -93,6 +93,7 @@ export const interactionApi = {
 export const pointsApi = {
   checkIn: () => api.post('/points/check-in'),
   getCheckInStatus: () => api.get('/points/check-in/status'),
+  getGrowth: () => api.get('/points/growth'),
 };
 
 export const messageApi = {

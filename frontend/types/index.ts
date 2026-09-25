@@ -118,3 +118,22 @@ export interface ChallengeSubmission {
   user: Pick<User, 'id' | 'username' | 'avatar' | 'level'>;
   createdAt: string;
 }
+
+export interface LeaderboardEntry {
+  rank: number;
+  userId: string;
+  username: string;
+  avatar?: string | null;
+  level: UserLevel;
+  points: number;
+  isMe: boolean;
+}
+
+export interface GrowthData {
+  checkedInToday: boolean;
+  streak: number;
+  monthCount: number;
+  points: number;
+  myRank: number;
+  leaderboard: LeaderboardEntry[];
+}

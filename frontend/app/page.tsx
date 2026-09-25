@@ -4,22 +4,68 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  Flower2, 
-  BookOpen, 
-  Users, 
-  Trophy, 
-  Bell, 
+import {
+  Flower2,
+  BookOpen,
+  Users,
+  Trophy,
+  Bell,
   MessageCircle,
-  CalendarCheck
+  CalendarCheck,
+  Footprints,
+  Flame,
+  CalendarDays,
+  Coins
 } from 'lucide-react';
 import { pointsApi, messageApi } from '@/lib/api';
+import { GrowthData, LeaderboardEntry, UserLevel } from '@/types';
+import { getLevelIcon } from '@/components/LevelBadge';
+
+const rankMedal = (rank: number) => {
+  if (rank === 1) return '🥇';
+  if (rank === 2) return '🥈';
+  if (rank === 3) return '🥉';
+  return null;
+};
+
+const LeaderboardRow = ({ entry }: { entry: LeaderboardEntry }) => (
+  <div
+    className={`flex items-center space-x-3 px-3 py-2 rounded-lg ${
+      entry.isMe ? 'bg-green-50 ring-1 ring-green-200' : 'hover:bg-gray-50'
+    }`}
+  >
+    <div className="w-8 text-center font-bold text-sm text-gray-500 flex-shrink-0">
+      {rankMedal(entry.rank) ? (
+        <span className="text-lg">{rankMedal(entry.rank)}</span>
+      ) : (
+        entry.rank
+      )}
+    </div>
+    <Link href={`/profile/${entry.userId}`} className="flex items-center space-x-2 flex-1 min-w-0">
+      <div className="w-8 h-8 bg-green-100 rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden">
+        {entry.avatar ? (
+          <img src={entry.avatar} alt={entry.username} className="w-8 h-8 object-cover" />
+        ) : (
+          <span className="text-sm">{getLevelIcon(entry.level as UserLevel)}</span>
+        )}
+      </div>
+      <span
+        className={`font-medium truncate ${entry.isMe ? 'text-green-700' : 'text-gray-800'}`}
+      >
+        {entry.username}
+        {entry.isMe && <span className="ml-1 text-xs text-green-500">（我）</span>}
+      </span>
+    </Link>
+    <span className="text-sm font-medium text-amber-600 flex-shrink-0">{entry.points} 积分</span>
+  </div>
+);
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
+  const { user, loading, updateUser } = useAuth();
   const router = useRouter();
   const [checkedIn, setCheckedIn] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [growth, setGrowth] = useState<GrowthData | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -35,24 +81,38 @@ export default function HomePage() {
 
   const loadStatus = async () => {
     try {
-      const [checkInRes, unreadRes] = await Promise.all([
-        pointsApi.getCheckInStatus(),
+      const [growthRes, unreadRes] = await Promise.all([
+        pointsApi.getGrowth(),
         messageApi.getUnreadCount()
       ]);
-      setCheckedIn(checkInRes.data.checkedIn);
+      setGrowth(growthRes.data);
+      setCheckedIn(growthRes.data.checkedInToday);
       setUnreadCount(unreadRes.data.unreadCount);
     } catch (error) {
       console.error('加载状态失败', error);
     }
   };
 
+  const applyGrowth = (data: GrowthData) => {
+    setGrowth(data);
+    setCheckedIn(data.checkedInToday);
+    const me = data.leaderboard.find((e) => e.isMe);
+    updateUser({ points: data.points, ...(me ? { level: me.level } : {}) });
+  };
+
   const handleCheckIn = async () => {
     try {
-      await pointsApi.checkIn();
-      setCheckedIn(true);
+      const res = await pointsApi.checkIn();
+      // 签到后统计和榜单当场更新
+      applyGrowth(res.data.growth);
       alert('签到成功！获得 10 积分');
     } catch (error: any) {
-      alert(error.response?.data?.error || '签到失败');
+      const message = error.response?.data?.error || '签到失败';
+      alert(message);
+      // 重复签到等情况下重新同步一次统计，保证页面与服务端一致
+      if (error.response?.status === 400) {
+        loadStatus();
+      }
     }
   };
 
@@ -74,6 +134,48 @@ export default function HomePage() {
     { label: '花友圈', path: '/moments', icon: Users, color: 'bg-purple-500', count: '分享动态' },
     { label: '种植挑战', path: '/challenges', icon: Trophy, color: 'bg-orange-500', count: '赢取奖励' },
   ];
+
+  const growthStats = growth
+    ? [
+        {
+          label: '连续签到',
+          value: growth.streak,
+          unit: '天',
+          icon: Flame,
+          color: 'text-orange-500',
+          bg: 'bg-orange-50',
+        },
+        {
+          label: '本月签到',
+          value: growth.monthCount,
+          unit: '次',
+          icon: CalendarDays,
+          color: 'text-blue-500',
+          bg: 'bg-blue-50',
+        },
+        {
+          label: '当前积分',
+          value: growth.points,
+          unit: '',
+          icon: Coins,
+          color: 'text-amber-500',
+          bg: 'bg-amber-50',
+        },
+        {
+          label: '我的名次',
+          value: growth.myRank,
+          unit: '名',
+          icon: Trophy,
+          color: 'text-purple-500',
+          bg: 'bg-purple-50',
+        },
+      ]
+    : [];
+
+  // 自己不在前十时，榜单末尾会追加自己的名次
+  const appendedMe = growth ? growth.leaderboard.length > 10 : false;
+  const topTen = appendedMe ? growth!.leaderboard.slice(0, 10) : growth?.leaderboard ?? [];
+  const myEntry = appendedMe ? growth!.leaderboard[growth!.leaderboard.length - 1] : null;
 
   return (
     <div className="max-w-4xl mx-auto p-4 space-y-6">
@@ -115,10 +217,59 @@ export default function HomePage() {
               }`}
             >
               <CalendarCheck className="w-5 h-5" />
-              <span>{checkedIn ? '已签到' : '签到'}</span>
+              <span>{checkedIn ? '今天已签到' : '签到'}</span>
             </button>
           </div>
         </div>
+      </div>
+
+      {/* 成长足迹 */}
+      <div className="card p-6">
+        <div className="flex items-center space-x-3 mb-4">
+          <Footprints className="w-6 h-6 text-green-500" />
+          <h3 className="text-lg font-bold text-gray-800">成长足迹</h3>
+        </div>
+
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
+          {growthStats.map((stat) => {
+            const Icon = stat.icon;
+            return (
+              <div key={stat.label} className={`${stat.bg} rounded-lg p-4 text-center`}>
+                <div className="flex justify-center mb-2">
+                  <Icon className={`w-6 h-6 ${stat.color}`} />
+                </div>
+                <p className="text-2xl font-bold text-gray-800">
+                  {stat.value}
+                  {stat.unit && <span className="text-sm font-normal text-gray-500 ml-1">{stat.unit}</span>}
+                </p>
+                <p className="text-sm text-gray-500 mt-1">{stat.label}</p>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="flex items-center space-x-2 mb-3">
+          <Trophy className="w-5 h-5 text-amber-500" />
+          <h4 className="font-bold text-gray-800">积分榜 · 前十</h4>
+        </div>
+        {growth && (
+          <div className="space-y-1">
+            {topTen.map((entry) => (
+              <LeaderboardRow key={entry.userId} entry={entry} />
+            ))}
+            {myEntry && (
+              <>
+                <div className="px-3 py-1 text-center text-gray-300 tracking-widest">· · ·</div>
+                <LeaderboardRow entry={myEntry} />
+              </>
+            )}
+          </div>
+        )}
+        {!growth && (
+          <div className="flex justify-center py-6">
+            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-green-500"></div>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
