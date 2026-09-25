@@ -4,22 +4,26 @@ import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { useAuth } from '@/context/AuthContext';
-import { 
-  Flower2, 
-  BookOpen, 
-  Users, 
-  Trophy, 
-  Bell, 
+import {
+  Flower2,
+  BookOpen,
+  Users,
+  Trophy,
+  Bell,
   MessageCircle,
   CalendarCheck
 } from 'lucide-react';
 import { pointsApi, messageApi } from '@/lib/api';
+import { GrowthData, LeaderboardResponse } from '@/types';
+import GrowthFootprint from '@/components/GrowthFootprint';
 
 export default function HomePage() {
-  const { user, loading } = useAuth();
+  const { user, loading, updateUser } = useAuth();
   const router = useRouter();
   const [checkedIn, setCheckedIn] = useState(false);
   const [unreadCount, setUnreadCount] = useState(0);
+  const [growth, setGrowth] = useState<GrowthData | null>(null);
+  const [leaderboard, setLeaderboard] = useState<LeaderboardResponse | null>(null);
 
   useEffect(() => {
     if (!loading && !user) {
@@ -33,13 +37,21 @@ export default function HomePage() {
     }
   }, [user]);
 
+  const applyGrowth = (growthData: GrowthData, board: LeaderboardResponse) => {
+    setGrowth(growthData);
+    setLeaderboard(board);
+    setCheckedIn(growthData.checkedIn);
+    // 同步顶部展示的积分与等级
+    updateUser({ points: growthData.points, level: growthData.level });
+  };
+
   const loadStatus = async () => {
     try {
       const [checkInRes, unreadRes] = await Promise.all([
         pointsApi.getCheckInStatus(),
         messageApi.getUnreadCount()
       ]);
-      setCheckedIn(checkInRes.data.checkedIn);
+      applyGrowth(checkInRes.data.growth, checkInRes.data.leaderboard);
       setUnreadCount(unreadRes.data.unreadCount);
     } catch (error) {
       console.error('加载状态失败', error);
@@ -48,10 +60,15 @@ export default function HomePage() {
 
   const handleCheckIn = async () => {
     try {
-      await pointsApi.checkIn();
-      setCheckedIn(true);
+      const res = await pointsApi.checkIn();
+      // 签到成功：积分、连续天数、本月次数、名次、榜单当场更新
+      applyGrowth(res.data.growth, res.data.leaderboard);
       alert('签到成功！获得 10 积分');
     } catch (error: any) {
+      // 重复签到返回“今天已签到”，不加分，仍用最新数据刷新统计与榜单
+      if (error.response?.data?.growth) {
+        applyGrowth(error.response.data.growth, error.response.data.leaderboard);
+      }
       alert(error.response?.data?.error || '签到失败');
     }
   };
@@ -115,11 +132,17 @@ export default function HomePage() {
               }`}
             >
               <CalendarCheck className="w-5 h-5" />
-              <span>{checkedIn ? '已签到' : '签到'}</span>
+              <span>{checkedIn ? '今天已签到' : '签到'}</span>
             </button>
           </div>
         </div>
       </div>
+
+      <GrowthFootprint
+        growth={growth}
+        leaderboard={leaderboard}
+        currentUserId={user.id}
+      />
 
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {stats.map((stat) => {

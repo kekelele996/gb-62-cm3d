@@ -118,3 +118,28 @@ export interface ChallengeSubmission {
   user: Pick<User, 'id' | 'username' | 'avatar' | 'level'>;
   createdAt: string;
 }
+
+// 成长足迹：签到统计与个人名次
+export interface GrowthData {
+  checkedIn: boolean;
+  streakDays: number;
+  monthCount: number;
+  points: number;
+  level: UserLevel;
+  rank: number;
+}
+
+// 积分榜条目（同分并列，榜单按积分从高到低）
+export interface LeaderboardEntry {
+  id: string;
+  username: string;
+  avatar: string | null;
+  level: UserLevel;
+  points: number;
+  rank: number;
+}
+
+export interface LeaderboardResponse {
+  top: LeaderboardEntry[];
+  me: LeaderboardEntry | null;
+}
